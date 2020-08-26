@@ -7,7 +7,9 @@ For basic usage see main.cpp
 ```
 C/C++ -> Optimization -> /O1, /Ob2, /Oi, /Os, /Oy-, /GL
 C/C++ -> Code Generation -> /MT, /GS-, /Gy
+C/C++ -> 代码生成 ->  启动C++异常(/EHcs) 改否
 Linker -> General -> /INCREMENTAL:NO
+
 ```
 ### How do I use this?
 When working with this framework, and coding shellcode in general, you'll have to keep a few things in mind:
@@ -37,6 +39,14 @@ MessageBoxA(NULL, strMboxMsg, strMboxTitle, MB_OK);
 DEFINE_FWD_FUNC_PTR("ntdll.dll", "RtlExitUserThread", ExitThread);
 ExitThread(0);
 ```
+
+
+### Shellcode编写注意事项
+> * 不可以用**Switch** 改为 if else if
+> * 不可以用 **new** 改为 alloc等替代函数
+> * 需要使用大数组需要添加**volatile** 关键字 不然会被优化到静态段
+> * 暂时总结到这里
+
 
 ### Misc
 * If you wish to add a function you must keep it between the MalCodeBegin and MalCodeEnd markers. 

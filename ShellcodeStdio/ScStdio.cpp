@@ -97,17 +97,16 @@ namespace ScStdio {
 	typedef decltype(function) type_##function; \
 	type_##function *##function = (type_##function *)getProcAddrByHash(hash_##function)
 
-	VOID __stdcall MalCode() {
+	VOID __stdcall MalCode(char * msg) {
 
 		CHAR strUser32[] = { 'u','s','e','r','3','2','.','d','l','l',0 };
 		CHAR strMboxTitle[] = { 'S','h','e','l','l','S','t','d','i','o', 0 };
-		CHAR strMboxMsg[] = { 'H','e','l','l','o',' ', 'W','o','r','l','d','!',0 };
 
 		DEFINE_FUNC_PTR("kernel32.dll", LoadLibraryA);
 		LoadLibraryA(strUser32);
 
 		DEFINE_FUNC_PTR("user32.dll", MessageBoxA);
-		MessageBoxA(NULL, strMboxMsg, strMboxTitle, MB_OK);
+		MessageBoxA(NULL, msg, strMboxTitle, MB_OK);
 	}
 
 #ifndef _WIN64
@@ -115,9 +114,66 @@ namespace ScStdio {
 #else
 	void MalCodeEnd() {};
 #endif
+	std::string Encode(const unsigned char* str, int bytes) {
+		static std::string _base64_table = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+		int num = 0, bin = 0, i;
+		std::string _encode_result;
+		const unsigned char* current;
+		current = str;
+		while (bytes > 2) {
+			_encode_result += _base64_table[current[0] >> 2];
+			_encode_result += _base64_table[((current[0] & 0x03) << 4) + (current[1] >> 4)];
+			_encode_result += _base64_table[((current[1] & 0x0f) << 2) + (current[2] >> 6)];
+			_encode_result += _base64_table[current[2] & 0x3f];
+
+			current += 3;
+			bytes -= 3;
+		}
+		if (bytes > 0)
+		{
+			_encode_result += _base64_table[current[0] >> 2];
+			if (bytes % 3 == 1) {
+				_encode_result += _base64_table[(current[0] & 0x03) << 4];
+				_encode_result += "==";
+			}
+			else if (bytes % 3 == 2) {
+				_encode_result += _base64_table[((current[0] & 0x03) << 4) + (current[1] >> 4)];
+				_encode_result += _base64_table[(current[1] & 0x0f) << 2];
+				_encode_result += "=";
+			}
+		}
+		return _encode_result;
+	}
 
 	BOOL WriteShellcodeToDisk()
 	{
+
+
+		std::string buffer = "static const unsigned char Shellcode[] = {\n";
+		auto start = (DWORD_PTR)(&MalCodeBegin);
+		auto end = (DWORD_PTR)(&MalCodeEnd);;
+		int num = 0;
+		for (DWORD_PTR i = start; i < end; i++)
+		{
+			char Temp[10] = "";
+
+			if (i == end - 1)
+				sprintf_s(Temp, "0x%0.2x", *(BYTE*)i);
+			else
+				sprintf_s(Temp, "0x%0.2x ,", *(BYTE*)i);
+			buffer += Temp;
+			num++;
+			if ((num % 15) == 0 && num != 0)
+				buffer += "\n";
+
+		}
+		buffer += "};";
+		std::ofstream fs("shellcode.h", std::ios::ate | std::ios::out);
+		fs << buffer;
+		fs.close();
+		fs.open("base64.txt");
+		fs << Encode((const unsigned char*)&MalCodeBegin, ((DWORD)&MalCodeEnd - (DWORD)&MalCodeBegin));
+		fs.close();
 		DWORD dwWritten;
 		HANDLE FileHandle = CreateFileW(L"shellcode.bin", GENERIC_ALL, NULL, NULL, CREATE_ALWAYS, NULL, NULL);
 
